@@ -1,0 +1,68 @@
+-- Step 1: Create Logging Table if it does not exist
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ETLProcessLog' AND type = 'U')
+BEGIN
+    -- Create the logging table to store ETL process messages
+    CREATE TABLE ETLProcessLog (
+        LogID INT PRIMARY KEY IDENTITY(1,1),  -- Unique identifier for each log entry
+        LogMessage NVARCHAR(255),              -- Message detailing the log event
+        LogDate DATETIME DEFAULT GETDATE()     -- Timestamp of when the log entry was created
+    );
+END
+
+-- Variable to hold log messages
+DECLARE @LogMessage NVARCHAR(255);
+
+-- Step 2: Log ETL start
+SET @LogMessage = 'ETL Process Started';  -- Message indicating the start of the ETL process
+INSERT INTO ETLProcessLog (LogMessage) VALUES (@LogMessage);  -- Insert log message into the log table
+
+-- Step 3: Create Staging Table if it does not exist
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'StagingSalesData' AND type = 'U')
+BEGIN
+    -- Create a staging table to hold intermediate data
+    CREATE TABLE StagingSalesData (
+        ID INT PRIMARY KEY IDENTITY(1,1),      -- Unique identifier for each row
+        OrderDate DATETIME,                     -- Column to hold the order date
+        TotalDue DECIMAL(18, 2)                -- Column to hold the total amount due
+    );
+    SET @LogMessage = 'Staging Table Created: StagingSalesData';  -- Log message for staging table creation
+    INSERT INTO ETLProcessLog (LogMessage) VALUES (@LogMessage);  -- Insert log message into the log table
+END
+
+-- Step 4: Insert data into the Staging Table
+INSERT INTO StagingSalesData (OrderDate, TotalDue)
+SELECT OrderDate, TotalDue
+FROM Sales.SalesOrderHeader;  -- Extract data from the source table
+
+SET @LogMessage = 'Data Inserted into Staging Table: StagingSalesData';  -- Log message for data insertion
+INSERT INTO ETLProcessLog (LogMessage) VALUES (@LogMessage);  -- Insert log message into the log table
+
+-- Step 5: Create Final Table if it does not exist
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'FinalSalesData' AND type = 'U')
+BEGIN
+    -- Create a final table to hold the transformed data
+    CREATE TABLE FinalSalesData (
+        ID INT PRIMARY KEY IDENTITY(1,1),      -- Unique identifier for each row
+        OrderDate DATETIME,                     -- Column to hold the order date
+        AdjustedTotalDue DECIMAL(18, 2)        -- Column to hold the adjusted total amount due
+    );
+    SET @LogMessage = 'Final Table Created: FinalSalesData';  -- Log message for final table creation
+    INSERT INTO ETLProcessLog (LogMessage) VALUES (@LogMessage);  -- Insert log message into the log table
+END
+
+-- Step 6: Transform and Load Data into Final Table
+INSERT INTO FinalSalesData (OrderDate, AdjustedTotalDue)
+SELECT OrderDate, TotalDue * 1.1  -- Example transformation: applying a 10% increase to TotalDue
+FROM StagingSalesData;  -- Load data from the staging table into the final table
+
+SET @LogMessage = 'Data Loaded into Final Table: FinalSalesData';  -- Log message for data loading
+INSERT INTO ETLProcessLog (LogMessage) VALUES (@LogMessage);  -- Insert log message into the log table
+
+-- Clean up Staging Table if no longer needed
+TRUNCATE TABLE StagingSalesData;  -- Remove all records from the staging table
+SET @LogMessage = 'Staging Table Cleaned Up: StagingSalesData';  -- Log message for staging table cleanup
+INSERT INTO ETLProcessLog (LogMessage) VALUES (@LogMessage);  -- Insert log message into the log table
+
+-- Step 7: Log ETL completion
+SET @LogMessage = 'ETL Process Completed';  -- Message indicating the completion of the ETL process
+INSERT INTO ETLProcessLog (LogMessage) VALUES (@LogMessage);  -- Insert log message into the log table
